@@ -1,10 +1,10 @@
 ---
-services: Acr
-platforms: .Net
+services: Container-Registry
+platforms: dotnet
 author: milismsft
 ---
 
-# Getting Started with Acr - Manage Container Registry With Webhooks - in .Net #
+# Getting started on managing Azure Container Registry with webhooks using C# #
 
           Azure Container Registry sample for managing container registry with webhooks.
              - Create an Azure Container Registry and setup couple Webhooks to be triggered on registry related actions (push, delete)
@@ -20,7 +20,7 @@ author: milismsft
 
 To run this sample:
 
-Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an auth file. See [how to create an auth file](https://github.com/Azure/azure-sdk-for-net/blob/Fluent/AUTH.md).
+Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an auth file. See [how to create an auth file](https://github.com/Azure/azure-libraries-for-java/blob/master/AUTH.md).
 
     git clone https://github.com/Azure-Samples/acr-dotnet-manage-azure-container-registry-with-webhooks.git
 
