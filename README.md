@@ -1,7 +1,9 @@
 ---
 page_type: sample
-languages: java
-products: azure
+languages:
+- java
+products:
+- azure
 services: Container-Registry
 platforms: dotnet
 author: yaohaizh
@@ -28,9 +30,9 @@ Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an aut
     git clone https://github.com/Azure-Samples/acr-dotnet-manage-azure-container-registry-with-webhooks.git
 
     cd acr-dotnet-manage-azure-container-registry-with-webhooks
-  
+
     dotnet build
-    
+
     bin\Debug\net452\ManageContainerRegistryWithWebhooks.exe
 
 ## More information ##
