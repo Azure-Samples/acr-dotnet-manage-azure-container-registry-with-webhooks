@@ -4,21 +4,21 @@ languages:
 - csharp
 products:
 - azure
-services: Container-Registry
-platforms: dotnet
-author: yaohaizh
+extensions:
+- services: Container-Registry
+- platforms: dotnet
 ---
 
 # Getting started on managing Azure Container Registry with webhooks using C# #
 
-          Azure Container Registry sample for managing container registry with webhooks.
-             - Create an Azure Container Registry and setup couple Webhooks to be triggered on registry related actions (push, delete)
-           - If a local Docker engine cannot be found, create a Linux virtual machine that will host a Docker engine
-               to be used for this sample
-           - Use Docker DotNet to create a Docker client that will push/pull an image to/from Azure Container Registry
-           - Pull a test image from the public Docker repo (hello-world:latest) to be used as a sample for pushing/pulling
-               to/from an Azure Container Registry
-             - List the container registry webhook event notifications after pushing a container image to the registry
+ Azure Container Registry sample for managing container registry with webhooks.
+    - Create an Azure Container Registry and setup couple Webhooks to be triggered on registry related actions (push, delete)
+  - If a local Docker engine cannot be found, create a Linux virtual machine that will host a Docker engine
+      to be used for this sample
+  - Use Docker DotNet to create a Docker client that will push/pull an image to/from Azure Container Registry
+  - Pull a test image from the public Docker repo (hello-world:latest) to be used as a sample for pushing/pulling
+      to/from an Azure Container Registry
+    - List the container registry webhook event notifications after pushing a container image to the registry
 
 
 ## Running this Sample ##
