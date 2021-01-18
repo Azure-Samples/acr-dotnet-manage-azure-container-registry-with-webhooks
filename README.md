@@ -5,8 +5,8 @@ languages:
 products:
 - azure
 extensions:
-- services: Container-Registry
-- platforms: dotnet
+  services: Container-Registry
+  platforms: dotnet
 ---
 
 # Getting started on managing Azure Container Registry with webhooks using C# #
