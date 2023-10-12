@@ -226,6 +226,13 @@ namespace Azure.ResourceManager.Samples.Common
             {
                 using (sshShell = SSHShell.Open(dockerHostIP, 22, vmUserName, vmPassword))
                 {
+                    // install docker
+                    sshShell.ExecuteCommand("sudo apt-get update");
+                    sshShell.ExecuteCommand("sudo apt-get install \\\n    apt-transport-https \\\n    ca-certificates \\\n    curl \\\n    gnupg \\\n    lsb-release");
+                    sshShell.ExecuteCommand("curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg\n");
+                    sshShell.ExecuteCommand("echo \\\n  \"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \\\n  $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null");
+                    sshShell.ExecuteCommand("sudo apt-get update");
+                    sshShell.ExecuteCommand("sudo apt-get install docker-ce docker-ce-cli containerd.io -y\n");
 
                     Utilities.Log("Copy Docker setup scripts to remote host: " + dockerHostIP);
                     sshShell.Upload(Encoding.ASCII.GetBytes(INSTALL_DOCKER_FOR_UBUNTU_SERVER_16_04_LTS),

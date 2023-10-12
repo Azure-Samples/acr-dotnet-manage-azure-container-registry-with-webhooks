@@ -80,9 +80,6 @@ namespace ManageContainerRegistryWithWebhooks
                 var lro = await resourceGroup.GetContainerRegistries().CreateOrUpdateAsync(WaitUntil.Completed, acrName, registryData);
                 ContainerRegistryResource containerRegistry = lro.Value;
 
-
-
-
                 // Create two webhooks
                 Utilities.Log("Creating two webhooks...");
                 var webhookInput1 = new ContainerRegistryWebhookCreateOrUpdateContent(resourceGroup.Data.Location)
@@ -124,7 +121,6 @@ namespace ManageContainerRegistryWithWebhooks
                 {
                     Utilities.Log($"\t{webhookEventInfo.EventResponseMessage.Content}");
                 }
-
 
                 //=============================================================
                 // Create a Docker client that will be used to push/pull images to/from the Azure Container Registry
