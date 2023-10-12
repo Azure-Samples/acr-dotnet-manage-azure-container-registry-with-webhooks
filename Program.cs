@@ -66,35 +66,60 @@ namespace ManageContainerRegistryWithWebhooks
 
                 Utilities.Log("Creating an Azure Container Registry");
 
-                IRegistry azureRegistry = azure.ContainerRegistries.Define(acrName)
-                        .WithRegion(region)
-                        .WithNewResourceGroup(rgName)
-                        .WithBasicSku()
-                        .WithRegistryNameAsAdminUser()
-                        .DefineWebhook(webhookName1)
-                            .WithTriggerWhen(WebhookAction.Push, WebhookAction.Delete)
-                            .WithServiceUri(webhookServiceUri1)
-                            .WithTag("tag", "value")
-                            .WithCustomHeader("name", "value")
-                            .Attach()
-                        .DefineWebhook(webhookName2)
-                            .WithTriggerWhen(WebhookAction.Push)
-                            .WithServiceUri(webhookServiceUri2)
-                            .Enabled(false)
-                            .WithRepositoriesScope("")
-                            .Attach()
-                        .WithTag("tag1", "value1")
-                        .Create();
+                // Create a azure container registry 
+                var registryData = new ContainerRegistryData(resourceGroup.Data.Location, new ContainerRegistrySku(ContainerRegistrySkuName.Premium))
+                {
+                    IsAdminUserEnabled = true,
+                    Sku = new ContainerRegistrySku(ContainerRegistrySkuName.Basic),
+                    Tags =
+                    {
+                        { "key1","value1"},
+                        { "key2","value2"}
+                    }
+                };
+                var lro = await resourceGroup.GetContainerRegistries().CreateOrUpdateAsync(WaitUntil.Completed, acrName, registryData);
+                ContainerRegistryResource containerRegistry = lro.Value;
 
-                Utilities.Print(azureRegistry);
+
+
+
+                // Create two webhooks
+                Utilities.Log("Creating two webhooks...");
+                var webhookInput1 = new ContainerRegistryWebhookCreateOrUpdateContent(resourceGroup.Data.Location)
+                {
+                    Actions =
+                    {
+                        ContainerRegistryWebhookAction.Push,
+                        ContainerRegistryWebhookAction.Delete
+                    },
+                    ServiceUri = new Uri(webhookServiceUri1),
+                    Tags = { { "key1", "value1" }, { "key2", "value2" } },
+                    CustomHeaders = { { "name", "value" } },
+                };
+                var webhookLro1 = await containerRegistry.GetContainerRegistryWebhooks().CreateOrUpdateAsync(WaitUntil.Completed, webhookName1, webhookInput1);
+                ContainerRegistryWebhookResource webhook1 = webhookLro1.Value;
+                Utilities.Log($"Created webhook: {webhook1.Data.Name}");
+
+                var webhookInput2 = new ContainerRegistryWebhookCreateOrUpdateContent(resourceGroup.Data.Location)
+                {
+                    Actions =
+                    {
+                        ContainerRegistryWebhookAction.Push,
+                    },
+                    ServiceUri = new Uri(webhookServiceUri2),
+                    Status = ContainerRegistryWebhookStatus.Disabled,
+                    Scope = "",
+                };
+                var webhookLro2 = await containerRegistry.GetContainerRegistryWebhooks().CreateOrUpdateAsync(WaitUntil.Completed, webhookName2, webhookInput2);
+                ContainerRegistryWebhookResource webhook2 = webhookLro2.Value;
+                Utilities.Log($"Created webhook: {webhook2.Data.Name}");
 
                 //=============================================================
                 // Ping the container registry webhook to validate it works as expected
 
-                IWebhook webhook = azureRegistry.Webhooks.Get(webhookName1);
-                webhook.Ping();
-                var webhookEvents = webhook.ListEvents();
-                Utilities.Log($"Found {webhookEvents.Count()} webhook events for: {webhook.Name} with container service: {azureRegistry.Name}/n");
+                _ = await webhook1.PingAsync();
+                var webhookEvents = await webhook1.GetEventsAsync().ToEnumerableAsync();
+                Utilities.Log($"Found {webhookEvents.Count()} webhook events for: {webhook1.Data.Name} with container service: {containerRegistry.Data.Name}/n");
                 foreach (var webhookEventInfo in webhookEvents)
                 {
                     Utilities.Log($"\t{webhookEventInfo.EventResponseMessage.Content}");
@@ -104,9 +129,9 @@ namespace ManageContainerRegistryWithWebhooks
                 //=============================================================
                 // Create a Docker client that will be used to push/pull images to/from the Azure Container Registry
 
-                var acrCredentials = azureRegistry.GetCredentials();
+                var acrCredentials = await containerRegistry.GetCredentialsAsync();
 
-                using (DockerClient dockerClient = DockerUtils.CreateDockerClient(azure, rgName, region))
+                using (DockerClient dockerClient = await DockerUtils.CreateDockerClient(resourceGroup))
                 {
                     var pullImgResult = dockerClient.Images.PullImage(
                         new Docker.DotNet.Models.ImagesPullParameters()
@@ -147,7 +172,7 @@ namespace ManageContainerRegistryWithWebhooks
                     //=============================================================
                     // Commit the new container
 
-                    string privateRepoUrl = azureRegistry.LoginServerUrl + "/" + dockerImageRelPath + "/" + dockerContainerName;
+                    string privateRepoUrl = containerRegistry.Data.LoginServer + "/" + dockerImageRelPath + "/" + dockerContainerName;
                     Utilities.Log("Commiting image at: " + privateRepoUrl);
 
                     var commitContainerResult = dockerClient.Miscellaneous.CommitContainerChanges(
@@ -169,17 +194,17 @@ namespace ManageContainerRegistryWithWebhooks
                         },
                         new Docker.DotNet.Models.AuthConfig()
                         {
-                            Username = acrCredentials.Username,
-                            Password = acrCredentials.AccessKeys[AccessKeyType.Primary],
-                            ServerAddress = azureRegistry.LoginServerUrl
+                            Username = acrCredentials.Value.Username,
+                            Password = acrCredentials.Value.Passwords.First().Value,
+                            ServerAddress = containerRegistry.Data.LoginServer
                         });
 
                     //=============================================================
                     // Gets the container registry webhook after pushing a container image and lists the event notifications
 
-                    webhook = azureRegistry.Webhooks.Get(webhookName1);
-                    webhookEvents = webhook.ListEvents();
-                    Utilities.Log($"Found {webhookEvents.Count()} webhook events for: {webhook.Name} with container service: {azureRegistry.Name}/n");
+                    webhook1 = await containerRegistry.GetContainerRegistryWebhooks().GetAsync(webhookName1);
+                    webhookEvents = await webhook1.GetEventsAsync().ToEnumerableAsync();
+                    Utilities.Log($"Found {webhookEvents.Count()} webhook events for: {webhook1.Data.Name} with container service: {containerRegistry.Data.Name}/n");
                     foreach (var webhookEventInfo in webhookEvents)
                     {
                         Utilities.Log($"\t{webhookEventInfo.EventResponseMessage.Content}");
