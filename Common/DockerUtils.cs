@@ -3,20 +3,20 @@
 
 using Docker.DotNet;
 using Docker.DotNet.X509;
-using Microsoft.Azure.Management.Fluent;
-using Microsoft.Azure.Management.Compute.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
 using System;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
-using Microsoft.Azure.Management.Compute.Fluent.Models;
-using Microsoft.Azure.Management.Network.Fluent;
 using Docker.DotNet.Models;
 using System.Collections.Generic;
 using System.IO;
+using Azure.ResourceManager.Resources;
+using Azure.ResourceManager.Network;
+using Azure.ResourceManager.Compute.Models;
+using Azure.ResourceManager.Compute;
+using System.Net.NetworkInformation;
+using System.Xml.Linq;
 
-namespace Microsoft.Azure.Management.Samples.Common
+namespace Azure.ResourceManager.Samples.Common
 {
     /**
      * Syncronous extension wrappers class for Docker.DotNet async methods.
@@ -80,7 +80,7 @@ namespace Microsoft.Azure.Management.Samples.Common
          * @param region - region to be used when creating a virtual machine
          * @return an instance of DockerClient
          */
-        public static DockerClient CreateDockerClient(IAzure azure, String rgName, Region region)
+        public static async Task<DockerClient> CreateDockerClient(ResourceGroupResource resourceGroup)
         {
             string envDockerHost = Environment.GetEnvironmentVariable("DOCKER_HOST");
             string envDockerCertPath = Environment.GetEnvironmentVariable("DOCKER_CERT_PATH");
@@ -91,7 +91,7 @@ namespace Microsoft.Azure.Management.Samples.Common
             {
                 // Could not find a Docker environment; presume that there is no local Docker engine running and
                 //    attempt to configure a Docker engine running inside a new    Azure virtual machine
-                dockerClient = FromNewDockerVM(azure, rgName, region);
+                dockerClient = await FromNewDockerVM(resourceGroup);
             }
             else
             {
@@ -134,35 +134,73 @@ namespace Microsoft.Azure.Management.Samples.Common
          * @param region - region to be used when creating a virtual machine
          * @return an instance of DockerClient
          */
-        public static DockerClient FromNewDockerVM(IAzure azure, String rgName, Region region)
+        public static async Task<DockerClient> FromNewDockerVM(ResourceGroupResource resourceGroup)
         {
-            string dockerVMName = SdkContext.RandomResourceName("dockervm", 15);
-            string publicIPDnsLabel = SdkContext.RandomResourceName("pip", 10);
-            string vmUserName = "dockerUser";
+            string dockerVMName = Utilities.CreateRandomName("dockervm");
+            string vmUserName = Utilities.CreateUsername();
             string vmPassword = Utilities.CreatePassword();
 
             // Could not find a Docker environment; presume that there is no local Docker engine running and
             //    attempt to configure a Docker engine running inside a new Azure virtual machine
             Utilities.Log("Creating an Azure virtual machine running Docker");
 
-            IVirtualMachine dockerVM = azure.VirtualMachines.Define(dockerVMName)
-                .WithRegion(region)
-                .WithExistingResourceGroup(rgName)
-                .WithNewPrimaryNetwork("10.0.0.0/28")
-                .WithPrimaryPrivateIPAddressDynamic()
-                .WithNewPrimaryPublicIPAddress(publicIPDnsLabel)
-                .WithPopularLinuxImage(KnownLinuxVirtualMachineImage.UbuntuServer16_04_Lts)
-                .WithRootUsername(vmUserName)
-                .WithRootPassword(vmPassword)
-                .WithSize(VirtualMachineSizeTypes.Parse("Standard_D2a_v4"))
-                .Create();
+            // Create a public ip
+            PublicIPAddressResource publicIP = await Utilities.CreatePublicIP(resourceGroup);
+            // Create a network interface
+            NetworkInterfaceResource nic = await Utilities.CreateNetworkInterface(resourceGroup, publicIP.Data.Id);
+
+            // Create a vm
+            VirtualMachineCollection vmCollection = resourceGroup.GetVirtualMachines();
+            VirtualMachineData vmInput = new VirtualMachineData(resourceGroup.Data.Location)
+            {
+                HardwareProfile = new VirtualMachineHardwareProfile()
+                {
+                    VmSize = VirtualMachineSizeType.StandardF2
+                },
+                OSProfile = new VirtualMachineOSProfile()
+                {
+                    AdminUsername = vmUserName,
+                    AdminPassword = vmPassword,
+                    ComputerName = dockerVMName,
+                },
+                NetworkProfile = new VirtualMachineNetworkProfile()
+                {
+                    NetworkInterfaces =
+                    {
+                        new VirtualMachineNetworkInterfaceReference()
+                        {
+                            Id = nic.Id,
+                            Primary = true,
+                        }
+                    }
+                },
+                StorageProfile = new VirtualMachineStorageProfile()
+                {
+                    OSDisk = new VirtualMachineOSDisk(DiskCreateOptionType.FromImage)
+                    {
+                        OSType = SupportedOperatingSystemType.Linux,
+                        Caching = CachingType.ReadWrite,
+                        ManagedDisk = new VirtualMachineManagedDisk()
+                        {
+                            StorageAccountType = StorageAccountType.StandardLrs
+                        }
+                    },
+                    ImageReference = new ImageReference()
+                    {
+                        Publisher = "Canonical",
+                        Offer = "UbuntuServer",
+                        Sku = "16.04-LTS",
+                        Version = "latest",
+                    }
+                }
+            };
+            var vmLro = await vmCollection.CreateOrUpdateAsync(WaitUntil.Completed, dockerVMName, vmInput);
+            VirtualMachineResource dockerVM = vmLro.Value;
 
             Utilities.Log("Created Azure Virtual Machine: " + dockerVM.Id);
 
             // Get the IP of the Docker host
-            INicIPConfiguration nicIPConfiguration = dockerVM.GetPrimaryNetworkInterface().PrimaryIPConfiguration;
-            IPublicIPAddress publicIp = nicIPConfiguration.GetPublicIPAddress();
-            string dockerHostIP = publicIp.IPAddress;
+            string dockerHostIP = publicIP.Data.IPAddress.ToString();
 
             DockerClient dockerClient = InstallDocker(dockerHostIP, vmUserName, vmPassword);
 
@@ -188,6 +226,13 @@ namespace Microsoft.Azure.Management.Samples.Common
             {
                 using (sshShell = SSHShell.Open(dockerHostIP, 22, vmUserName, vmPassword))
                 {
+                    // install docker
+                    sshShell.ExecuteCommand("sudo apt-get update");
+                    sshShell.ExecuteCommand("sudo apt-get install \\\n    apt-transport-https \\\n    ca-certificates \\\n    curl \\\n    gnupg \\\n    lsb-release");
+                    sshShell.ExecuteCommand("curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg\n");
+                    sshShell.ExecuteCommand("echo \\\n  \"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \\\n  $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null");
+                    sshShell.ExecuteCommand("sudo apt-get update");
+                    sshShell.ExecuteCommand("sudo apt-get install docker-ce docker-ce-cli containerd.io -y\n");
 
                     Utilities.Log("Copy Docker setup scripts to remote host: " + dockerHostIP);
                     sshShell.Upload(Encoding.ASCII.GetBytes(INSTALL_DOCKER_FOR_UBUNTU_SERVER_16_04_LTS),
@@ -255,7 +300,7 @@ namespace Microsoft.Azure.Management.Samples.Common
                     Utilities.Log(output);
                     string dockerHostPort = "2376"; // Default Docker port when secured connection is enabled
                     dockerHostTlsEnabled = true;
-                    SdkContext.DelayProvider.Delay(10000);
+                    Thread.Sleep(10000);
 
                     dockerHostUrl = "tcp://" + dockerHostIP + ":" + dockerHostPort;
                 }

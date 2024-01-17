@@ -1,12 +1,11 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
-using Microsoft.Azure.Management.ResourceManager.Fluent;
 using Renci.SshNet;
 using System;
 using System.IO;
 
-namespace Microsoft.Azure.Management.Samples.Common
+namespace Azure.ResourceManager.Samples.Common
 {
     public class SSHShell : IDisposable
     {
@@ -48,7 +47,7 @@ namespace Microsoft.Azure.Management.Samples.Common
                         throw exception;
                     }
                 }
-                SdkContext.DelayProvider.Delay(backoffTime);
+                Thread.Sleep(backoffTime);
             }
         }
 
